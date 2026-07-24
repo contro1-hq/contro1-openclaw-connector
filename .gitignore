@@ -1,5 +1,9 @@
 node_modules/
 dist/
+# The plugin ships its built runtime in the repo so ClawHub can publish from the
+# GitHub ref (openclaw.runtimeExtensions -> ./dist/index.js). Rebuild on change.
+!plugin/dist/
+!plugin/dist/**
 .env
 .env.*
 !.env.example
