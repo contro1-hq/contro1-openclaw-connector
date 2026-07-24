@@ -23,6 +23,15 @@ const policy = loadToolPolicy(process.env.CONTRO1_TOOL_POLICY || null);
 export default definePluginEntry({
     id: 'contro1-approvals',
     name: 'Contro1 Approvals',
+    description: 'Turn any sensitive OpenClaw tool call into a human approval routed to Contro1.',
+    // This plugin takes no OpenClaw config; tune which tool calls pause with the
+    // CONTRO1_TOOL_POLICY environment variable (see README). A strict empty schema
+    // is a valid declaration and satisfies ClawHub's config-schema requirement.
+    configSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {},
+    },
     register(api) {
         api.on('before_tool_call', async (event) => {
             const verdict = classifyToolCall(event.toolName, event.params || {}, policy);

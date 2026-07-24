@@ -46,9 +46,18 @@ declare module 'openclaw/plugin-sdk/plugin-entry' {
     ): void;
   };
 
+  export type OpenClawPluginConfigSchema = {
+    type: 'object';
+    additionalProperties?: boolean;
+    properties?: Record<string, unknown>;
+    required?: string[];
+  };
+
   export type PluginEntry = {
     id: string;
     name: string;
+    description?: string;
+    configSchema?: OpenClawPluginConfigSchema | (() => OpenClawPluginConfigSchema);
     register: (api: OpenClawPluginApi) => void;
   };
 
