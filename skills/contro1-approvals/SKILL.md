@@ -1,12 +1,6 @@
 ---
 name: contro1-approvals
 description: How to ask a human before a sensitive action and how to log every autonomous action, so your work is accountable. Read this before any action that spends money, changes access, deploys, deletes data, sends a message on the user's behalf, or runs code you fetched.
-metadata:
-  {
-    "openclaw": {
-      "requires": { "env": ["CONTRO1_BRIDGE_URL"] }
-    }
-  }
 ---
 
 # Contro1 approvals and logging
@@ -46,7 +40,7 @@ it to pause, and make the reviewer's job easy:
 
 For work that did **not** need approval - the reads, the drafts, the benign tool
 calls you did on your own - leave a record. After each autonomous action, POST a
-short audit note to the bridge:
+short audit note to the bridge (set `CONTRO1_BRIDGE_URL` to its address):
 
 ```bash
 curl -sX POST "$CONTRO1_BRIDGE_URL/agent/audit" \

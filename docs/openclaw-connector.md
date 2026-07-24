@@ -58,7 +58,7 @@ Because enforcement is external, make it truly unbypassable by denying the assis
 The repo ships two skill files with different jobs:
 
 - **`skills/contro1-openclaw.md`** is the build guide for whoever sets up the bridge.
-- **`skills/contro1-openclaw-agent.md`** installs into the assistant's own skills directory (`~/.agents/skills` or `<workspace>/skills`). It teaches the assistant the cooperative behavior: give a reviewer clear, factual context when an action needs approval, and POST a short audit note to `POST /agent/audit` after each autonomous action.
+- **`skills/contro1-approvals/SKILL.md`** (the `contro1-approvals` skill) installs into the assistant's own skills directory (`~/.agents/skills` or `<workspace>/skills`). It teaches the assistant the cooperative behavior: give a reviewer clear, factual context when an action needs approval, and POST a short audit note to `POST /agent/audit` after each autonomous action.
 
 Keep the split clear. The agent-side skill improves quality - good context, honest logging of background work beyond OpenClaw's 30-day metadata ledger. It is **not** the enforcement. An adversarial assistant can skip it, which is exactly why enforcement lives in the approval path and this is only additive evidence.
 

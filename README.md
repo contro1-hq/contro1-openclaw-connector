@@ -90,7 +90,7 @@ The suite covers the fail-closed rules: tampered signature, stale timestamp, unk
 - Set `tools.exec.mode` to `ask` (or `auto` with a conservative allowlist) so misses stop for the bridge.
 - Keep `askFallback: "deny"` so an unreachable bridge means deny, not run.
 - Set `skills.workshop.approvalPolicy` to `pending` so the assistant cannot rewrite its own skills to grant new powers.
-- Optionally install `skills/contro1-openclaw-agent.md` into the assistant's skills directory and set `CONTRO1_BRIDGE_URL` so it self-logs autonomous actions to `POST /agent/audit`.
+- Optionally install the `contro1-approvals` skill (`skills/contro1-approvals/SKILL.md`) into the assistant's skills directory and set `CONTRO1_BRIDGE_URL` so it self-logs autonomous actions to `POST /agent/audit`.
 
 ## Configuration
 
