@@ -6,7 +6,7 @@ This is the ClawHub-installable half of the [Contro1 OpenClaw connector](../READ
 
 ## Install
 
-1. Install `contro1-approvals` from ClawHub into your OpenClaw.
+1. Install it from ClawHub: https://clawhub.ai/contro1/plugins/openclaw-approvals-plugin
 2. Turn on plugin approval forwarding so the bridge can route the approvals:
 
    ```bash
