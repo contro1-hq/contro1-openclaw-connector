@@ -10,7 +10,10 @@ Repository description:
 
 - Website: https://contro1.com
 - Documentation: https://contro1.com/docs/openclaw-human-approval
+- Contro1 CLI (your assistant can use it too): https://contro1.com/docs/cli
 - Agent Integration Kit: https://contro1.com/agent-kit
+
+> Because an OpenClaw assistant can run shell commands, it can also use the `contro1` CLI directly - to create an approval request, wait for the decision, log an autonomous action, or pull evidence - without going through the bridge. The bridge governs the exec/plugin approvals OpenClaw already raises; the CLI is for approvals and logging the assistant chooses to ask for itself. See the [CLI docs](https://contro1.com/docs/cli).
 
 OpenClaw is an open-source personal AI assistant that runs on your own machine, answers on the channels you already use (WhatsApp, Telegram, iMessage, Signal, Slack, and more), keeps persistent memory, browses the web, runs shell commands, manages email and calendar, and can write its own skills. It acts autonomously in the background. This connector governs what it is allowed to do.
 

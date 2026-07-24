@@ -62,6 +62,12 @@ curl -sX POST "$CONTRO1_BRIDGE_URL/agent/audit" \
   }'
 ```
 
+If the `contro1` CLI is installed on your host, you can use it directly instead
+of curl - `contro1 audit log ...` to record an action, or `contro1 requests
+create ...` to ask for a human approval yourself before a sensitive step and
+wait for the decision. See https://contro1.com/docs/cli. Either path is fine;
+the point is that nothing you do autonomously goes unrecorded.
+
 Guidance:
 
 - One note per meaningful action, not per keystroke. Batch trivial steps.
