@@ -29,6 +29,13 @@ Governed approval families:
 
 Contro1 decides whether each is auto-allowed, routed to a human, or blocked. Every decision is recorded as signed audit evidence linked to the OpenClaw agent, session, and command.
 
+## Two parts: bridge and ClawHub plugin
+
+- **[Bridge](examples/typescript)** - governance. Runs outside the gateway, holds the Contro1 credentials, routes approvals to the right human, and keeps signed evidence.
+- **[ClawHub plugin](plugin)** - coverage. A thin, secret-free plugin that uses OpenClaw's `before_tool_call` hook to turn *any* sensitive tool call (email, browser purchase, file delete, deploy) into an approval - not just host exec. It holds no credentials and makes no network calls; the bridge does the credential-bearing work. Install it from ClawHub for one click. **Free up to 1,000 approval requests per month.**
+
+You can run the bridge alone (governs exec/plugin approvals OpenClaw already raises) or add the plugin to extend coverage to every sensitive tool call.
+
 ## Why an external bridge, not a native plugin
 
 OpenClaw native plugins run **in-process with the gateway and are not sandboxed** - a faulty or hostile plugin can crash or compromise the whole gateway. An external operator client is the documented path for integrations and keeps a clean trust boundary. See [docs/openclaw-connector.md](docs/openclaw-connector.md).

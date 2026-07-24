@@ -1,0 +1,26 @@
+{
+  "name": "@contro1/openclaw-approvals-plugin",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Turn any sensitive OpenClaw tool call into a human approval routed to Contro1 for role routing, quorum, and signed audit evidence. Free up to 1,000 approval requests per month.",
+  "license": "MIT",
+  "files": ["dist", "openclaw.plugin.json", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "manifest": "openclaw plugins build --entry ./dist/index.js",
+    "validate": "openclaw plugins validate --entry ./dist/index.js",
+    "publish:clawhub": "clawhub package publish . --tags latest"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.5.17"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.3"
+  },
+  "openclaw": {
+    "extensions": ["./src/index.ts"],
+    "runtimeExtensions": ["./dist/index.js"],
+    "compat": { "pluginApi": "1" },
+    "build": { "openclawVersion": "2026.7.1" }
+  }
+}
