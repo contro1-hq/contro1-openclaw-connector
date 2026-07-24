@@ -28,9 +28,11 @@ It governs three approval families OpenClaw already exposes:
 - **plugin approvals** - plugin-owned operations that request approval per call.
 - **system-agent approvals** - surfaced together with the above by `openclaw approvals pending`.
 
-## Why an external bridge, not a native plugin
+## Why the governance runs outside the gateway
 
-OpenClaw native plugins run **in-process with the gateway and are not sandboxed**: a faulty or hostile plugin can crash or compromise the entire gateway. An external operator client is the documented path for scripts, dashboards, and integrations, and it keeps a clear trust boundary between "decides whether to run" (the gateway) and "decides who approves" (Contro1). The bridge never needs to be trusted inside the gateway; it only needs an operator token scoped to approvals.
+OpenClaw plugins run **in-process with the gateway and are not sandboxed**: a faulty or hostile plugin can crash or compromise the entire gateway. So the parts that hold a credential or make the approval decision stay outside it, in an external operator client - the documented path for scripts, dashboards, and integrations. That keeps a clear trust boundary between "decides whether to run" (the gateway) and "decides who approves" (Contro1). The bridge never needs to be trusted inside the gateway; it only needs an operator token scoped to approvals.
+
+The optional [ClawHub plugin](../plugin) does run in-process, and is safe to because it holds no credentials, makes no network calls, and only asks OpenClaw to pause a sensitive tool call. The credential-bearing governance still happens in the bridge.
 
 ## The trust boundary
 

@@ -36,9 +36,9 @@ Contro1 decides whether each is auto-allowed, routed to a human, or blocked. Eve
 
 You can run the bridge alone (governs exec/plugin approvals OpenClaw already raises) or add the plugin to extend coverage to every sensitive tool call.
 
-## Why an external bridge, not a native plugin
+## Why governance runs outside the gateway
 
-OpenClaw native plugins run **in-process with the gateway and are not sandboxed** - a faulty or hostile plugin can crash or compromise the whole gateway. An external operator client is the documented path for integrations and keeps a clean trust boundary. See [docs/openclaw-connector.md](docs/openclaw-connector.md).
+OpenClaw plugins run **in-process with the gateway and are not sandboxed** - a faulty or hostile plugin can crash or compromise the whole gateway. So anything that holds a credential or makes the approval decision stays **outside** it, in the bridge. The optional [plugin](plugin) is safe to run in-process precisely because it does neither: it holds no credentials, makes no network calls, and only asks OpenClaw to pause. See [docs/openclaw-connector.md](docs/openclaw-connector.md).
 
 ## Quick start (no OpenClaw, no cloud account)
 
