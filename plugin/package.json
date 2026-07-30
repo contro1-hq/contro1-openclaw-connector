@@ -1,6 +1,6 @@
 {
   "name": "@contro1/openclaw-approvals-plugin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Turn any sensitive OpenClaw tool call into a human approval routed to Contro1 for role routing, quorum, and signed audit evidence. Free up to 1,000 approval requests per month.",
   "license": "MIT",
