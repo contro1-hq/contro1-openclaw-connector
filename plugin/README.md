@@ -2,7 +2,9 @@
 
 **Turn any sensitive OpenClaw tool call into a human approval routed to Contro1. Free up to 1,000 approval requests per month.**
 
-This is the ClawHub-installable half of the [Contro1 OpenClaw connector](../README.md). The external bridge governs the exec and plugin approvals OpenClaw already raises; this plugin extends the *coverage* to **any** sensitive tool call - sending an email, buying something in the browser, deleting a file, deploying - by pausing it for approval through OpenClaw's `before_tool_call` hook.
+This is the ClawHub-installable half of the [Contro1 OpenClaw connector](https://github.com/contro1-hq/contro1-openclaw-connector). The external bridge governs the exec and plugin approvals OpenClaw already raises; this plugin extends the *coverage* to **any** sensitive tool call - sending an email, buying something in the browser, deleting a file, deploying - by pausing it for approval through OpenClaw's `before_tool_call` hook.
+
+**Learn more:** [contro1.com](https://contro1.com) · [How it works](https://contro1.com/docs/openclaw-human-approval) · [Source on GitHub](https://github.com/contro1-hq/contro1-openclaw-connector)
 
 ## Install
 
@@ -12,7 +14,7 @@ This is the ClawHub-installable half of the [Contro1 OpenClaw connector](../READ
    ```bash
    openclaw config set approvals.plugin.enabled true
    ```
-3. Run the [bridge](../examples/typescript) so approvals go to Contro1. Without it, a paused tool call falls back to OpenClaw's own `/approve` in chat, with no role routing or signed evidence.
+3. Run the [bridge](https://github.com/contro1-hq/contro1-openclaw-connector/tree/main/examples/typescript) so approvals go to Contro1. Without it, a paused tool call falls back to OpenClaw's own `/approve` in chat, with no role routing or signed evidence.
 
 ## What it pauses
 
@@ -23,7 +25,7 @@ A `before_tool_call` hook fires on **every** tool call, so the default is **allo
 - **Always allow:** reads and drafts (`get_*`, `list_*`, `read_*`, `search_*`, `draft_*`).
 - **Exception:** a read/list/get-shaped name that also matches `credential|secret|token|api_key|password|ssh|vault|keychain|keyring` (e.g. `read_credentials`, `get_secret`) is not covered by the always-allow rule above - it still requires approval, and is treated as critical (no standing allow-always).
 
-Override the defaults with the `CONTRO1_TOOL_POLICY` environment variable (a JSON string matching `ToolPolicyConfig` in [src/policy.ts](src/policy.ts)). Set `sensitiveReadOverridePatterns` explicitly if your own credential/secret tool names don't match the default list.
+Override the defaults with the `CONTRO1_TOOL_POLICY` environment variable (a JSON string matching `ToolPolicyConfig` in [src/policy.ts](https://github.com/contro1-hq/contro1-openclaw-connector/blob/main/plugin/src/policy.ts)). Set `sensitiveReadOverridePatterns` explicitly if your own credential/secret tool names don't match the default list.
 
 ## No credentials, no network
 
