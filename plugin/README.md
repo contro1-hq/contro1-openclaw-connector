@@ -21,8 +21,9 @@ A `before_tool_call` hook fires on **every** tool call, so the default is **allo
 - **Require approval:** send/message, buy/pay/transfer, deploy/publish, delete/destroy, exec/shell, browser submit/checkout, credential/secret access, permission grants - or any call carrying a sensitive parameter (`amount`, `to`, `recipient`, ...).
 - **Critical (no standing allow-always):** payments, deletes, deploys, credential access.
 - **Always allow:** reads and drafts (`get_*`, `list_*`, `read_*`, `search_*`, `draft_*`).
+- **Exception:** a read/list/get-shaped name that also matches `credential|secret|token|api_key|password|ssh|vault|keychain|keyring` (e.g. `read_credentials`, `get_secret`) is not covered by the always-allow rule above - it still requires approval, and is treated as critical (no standing allow-always).
 
-Override the defaults with the `CONTRO1_TOOL_POLICY` environment variable (a JSON string matching `ToolPolicyConfig` in [src/policy.ts](src/policy.ts)).
+Override the defaults with the `CONTRO1_TOOL_POLICY` environment variable (a JSON string matching `ToolPolicyConfig` in [src/policy.ts](src/policy.ts)). Set `sensitiveReadOverridePatterns` explicitly if your own credential/secret tool names don't match the default list.
 
 ## No credentials, no network
 
