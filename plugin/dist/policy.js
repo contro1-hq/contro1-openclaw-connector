@@ -1,16 +1,16 @@
 /**
- * Classify one OpenClaw tool call.
- *
- * A `before_tool_call` hook fires for EVERY tool the model selects, including
- * benign reads. So unlike the exec bridge - where OpenClaw already decided to
- * stop - the default here MUST be "allow", or the assistant would pause on
- * every step and become unusable. Only tool calls that match a sensitive
- * pattern are turned into an approval.
- *
- * The classifier looks only at machine-observed inputs: the tool name and the
- * arguments the model passed. It never reads any free-text the model wrote
- * about its own intent.
- */
+* Classify one OpenClaw tool call.
+*
+* A `before_tool_call` hook fires for EVERY tool the model selects, including
+* benign reads. So unlike the exec bridge - where OpenClaw already decided to
+* stop - the default here MUST be "allow", or the assistant would pause on
+* every step and become unusable. Only tool calls that match a sensitive
+* pattern are turned into an approval.
+*
+* The classifier looks only at machine-observed inputs: the tool name and the
+* arguments the model passed. It never reads any free-text the model wrote
+* about its own intent.
+*/
 export const DEFAULT_TOOL_POLICY = {
     // Actions that leave the machine, spend, deploy, or destroy.
     sensitiveToolPatterns: [
@@ -35,6 +35,12 @@ export const DEFAULT_TOOL_POLICY = {
         '^(get|list|read|search|fetch|view|show|find|lookup|preview|draft)\\b',
         '^(get|list|read|search|fetch|view|show|find|lookup)_',
     ],
+    // Reads that touch a secret store still need a human, even though their name
+    // also looks like a safe "get_*/read_*" call (e.g. "read_credentials",
+    // "get_secret", "fetch_api_key"). Without this override, allowToolPatterns
+    // would short-circuit to "allow" before the credential/secret pattern below
+    // is ever checked.
+    sensitiveReadOverridePatterns: ['credential|secret|token|api_key|password|ssh|vault|keychain|keyring'],
     sensitiveParamKeys: ['amount', 'total', 'price', 'to', 'recipient', 'account', 'destination', 'quantity'],
 };
 export function loadToolPolicy(raw) {
@@ -57,14 +63,16 @@ function anyMatch(patterns, text) {
 }
 export function classifyToolCall(toolName, params, policy = DEFAULT_TOOL_POLICY) {
     const name = String(toolName || '');
-    // Explicit reads/drafts win: never pause them, even if a broad verb matches.
-    if (anyMatch(policy.allowToolPatterns, name))
+    // Explicit reads/drafts win: never pause them, even if a broad verb matches -
+    // unless the read targets a credential/secret store, which must still pause.
+    const sensitiveRead = anyMatch(policy.sensitiveReadOverridePatterns, name);
+    if (!sensitiveRead && anyMatch(policy.allowToolPatterns, name))
         return { decision: 'allow' };
     const bySensitiveName = anyMatch(policy.sensitiveToolPatterns, name);
     const byParam = policy.sensitiveParamKeys.some((key) => key in params) ? 'sensitive-param' : null;
     if (!bySensitiveName && !byParam)
         return { decision: 'allow' };
-    const critical = anyMatch(policy.criticalToolPatterns, name) !== null;
+    const critical = anyMatch(policy.criticalToolPatterns, name) !== null || sensitiveRead !== null;
     const reason = bySensitiveName
         ? `Tool "${name}" matches a sensitive pattern (${bySensitiveName}).`
         : `Tool "${name}" carries a sensitive parameter.`;
