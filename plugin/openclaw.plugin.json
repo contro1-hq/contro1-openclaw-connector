@@ -2,7 +2,7 @@
   "id": "contro1-approvals",
   "name": "Contro1 Approvals",
   "description": "Turn any sensitive OpenClaw tool call into a human approval routed to Contro1. Free up to 1,000 approval requests per month.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
