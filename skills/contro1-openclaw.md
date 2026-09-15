@@ -24,20 +24,23 @@ Before coding in a customer repo, inspect:
 - how OpenClaw is configured: `tools.exec.mode` (`deny` / `allowlist` / `ask` / `auto` / `full`), `ask`, and `askFallback`
 - whether the bridge will reach OpenClaw via the `openclaw` CLI (default) or the Gateway WebSocket (preview)
 - what operator credentials the bridge holds; approval resolution needs `operator.approvals`, and full `pending` enumeration currently also draws on `operator.admin`
+- where the host bridge stores its Contro1 Agent Credential (`CONTRO1_AGENT_TOKEN_FILE` preferred); the credential must not be readable by the agent or container
+- whether Contro1 decisions are read by polling (default for local/private hosts) or by signed webhook callback (optional public-host mode)
 - how agent id, session key, and host (gateway vs node) are represented in this deployment
 - which sessions are production and must never be auto-allowed
-- where the signed Contro1 callback can be received (public HTTPS URL for `PUBLIC_BASE_URL`)
+- if webhook mode is enabled, where the signed Contro1 callback can be received (`PUBLIC_BASE_URL`)
 
 ## Integration Rules
 
 - Do not weaken OpenClaw. Keep `askFallback: "deny"` so that if the bridge is unreachable, OpenClaw denies rather than runs.
-- Route exec and plugin approvals through Contro1; resolve them only from a verified signed callback.
+- Route exec and plugin approvals through Contro1; resolve them only after the bridge has verified a Contro1 decision. Prefer polling via the Contro1 CLI runtime contract for local/private installs; use signed webhook callback only when a public callback URL is intentionally configured.
 - Set OpenClaw to `ask` (or `auto` with a conservative allowlist) so misses actually stop for the bridge to pick up.
 - Use a deterministic `external_request_id` (`openclaw:<kind>:<approval_id>`) for idempotency.
 - Use the OpenClaw session key as `correlation_id` so a whole session groups in the timeline.
 - Bind every approval to the machine-observed facts (command, argv, cwd, agent, session) with a hash; re-check the binding before resolving, mirroring OpenClaw's own `systemRunPlan` mismatch rejection.
 - Only machine-observed facts feed risk and routing. Text the agent authored is display-only.
-- Fail closed on invalid signature, stale timestamp (older than 5 minutes), unknown request id, expired approval, or binding mismatch.
+- Fail closed on invalid webhook signature, stale webhook timestamp (older than 5 minutes), unknown request id, expired approval, polling/auth failure, or binding mismatch.
+- Treat the Contro1 bridge manifest as discovery and UX metadata only. The security boundary is server-side scopes, action grants, agent binding, binding hashes, and the fact that the runtime token is not exposed to the agent.
 - Beat OpenClaw's 30-minute approval expiry: set the Contro1 request `expires_at` to the approval's `expiresAtMs`.
 - Log auto-allowed and denied actions as audit records, not just approvals, so the timeline has no holes.
 
@@ -82,8 +85,9 @@ When done, report:
 - which OpenClaw approvals now route through Contro1 (exec, plugin, system-agent)
 - the OpenClaw config applied (`tools.exec.mode`, `ask`, `askFallback`) and why `askFallback` stays `deny`
 - the operator scope granted to the bridge (`operator.approvals`, and whether `operator.admin` was needed for enumeration)
+- the Contro1 runtime mode used: host bridge with Agent Credential, and whether delivery is polling or webhook
 - approval policy defaults (auto-allow, require-approval, block)
 - audit event names added
-- callback signature verification and action-binding status
+- polling/webhook verification and action-binding status
 - smoke tests performed (mock approve, deny, tamper, replay, expiry, binding mismatch)
 - remaining limitation: the Gateway WebSocket transport stays preview until `@openclaw/gateway-client` publishes the device-auth signature; the CLI transport is the supported path

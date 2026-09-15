@@ -30,6 +30,7 @@ export interface PendingStore {
   put(pending: PendingApproval): Promise<void>;
   getByRequestId(requestId: string): Promise<PendingApproval | null>;
   getByApprovalId(approvalId: string): Promise<PendingApproval | null>;
+  listPending(): Promise<PendingApproval[]>;
   markResolved(requestId: string): Promise<void>;
   delete(requestId: string): Promise<void>;
   /** Drop entries older than maxAgeMs so a long-running process does not grow without bound. */
@@ -52,6 +53,10 @@ export class InMemoryPendingStore implements PendingStore {
   async getByApprovalId(approvalId: string): Promise<PendingApproval | null> {
     const requestId = this.byApprovalId.get(approvalId);
     return requestId ? this.byRequestId.get(requestId) || null : null;
+  }
+
+  async listPending(): Promise<PendingApproval[]> {
+    return [...this.byRequestId.values()].filter((pending) => !pending.resolved_at_ms);
   }
 
   async markResolved(requestId: string): Promise<void> {

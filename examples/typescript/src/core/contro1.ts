@@ -1,6 +1,10 @@
 import crypto from 'node:crypto';
+import { spawn } from 'node:child_process';
 
 export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
+
+const CLI_TIMEOUT_MS = 30_000;
+const CLI_MAX_OUTPUT = 1024 * 1024;
 
 export type ProtocolRequest = {
   title: string;
@@ -101,25 +105,44 @@ export function normalizeProtocolRequest(request: ProtocolRequest): Record<strin
 }
 
 export class Contro1Client {
-  private readonly apiKey: string;
-  private readonly baseUrl: string;
   private readonly simulated: boolean;
+  private readonly cliPath: string;
+  private readonly env: NodeJS.ProcessEnv;
 
   constructor(env: NodeJS.ProcessEnv = process.env) {
-    this.apiKey = env.CONTRO1_API_KEY || '';
-    this.baseUrl = (env.CONTRO1_BASE_URL || 'https://api.contro1.com/api/centcom/v1').replace(/\/$/, '');
-    this.simulated = !this.apiKey;
+    this.env = { ...env };
+    // No token is copied between variables here. Every CLI call below passes
+    // --runtime, so the CLI itself resolves ONE identity (AGENT_TOKEN_FILE, then
+    // AGENT_TOKEN, then CONTRO1_TOKEN), refuses a browser-issued token, and never
+    // falls back to the keychain of whoever is logged in on this host.
+    if (this.env.CONTRO1_API_KEY && !this.env.CONTRO1_TOKEN && !this.env.CONTRO1_AGENT_TOKEN && !this.env.CONTRO1_AGENT_TOKEN_FILE) {
+      this.env.CONTRO1_TOKEN = this.env.CONTRO1_API_KEY;
+    }
+    if (this.env.CONTRO1_BASE_URL && !this.env.CONTRO1_API_URL) {
+      this.env.CONTRO1_API_URL = this.env.CONTRO1_BASE_URL.replace(/\/api\/centcom\/v1\/?$/u, '');
+    }
+    this.cliPath = env.CONTRO1_CLI || 'contro1';
+    this.simulated = !this.env.CONTRO1_AGENT_TOKEN && !this.env.CONTRO1_AGENT_TOKEN_FILE && !this.env.CONTRO1_TOKEN;
     if (this.simulated) {
-      console.warn('CONTRO1_API_KEY is not set. Running in simulated mode: requests are logged, never sent.');
+      console.warn('No Contro1 runtime token is set. Running in simulated mode: requests are logged, never sent.');
     }
   }
 
   async createRequest(payload: ProtocolRequest): Promise<Record<string, unknown>> {
-    return await this.post('/requests', normalizeProtocolRequest(payload), payload.external_request_id);
+    const body = normalizeProtocolRequest(payload);
+    if (this.simulated) {
+      console.log('SIMULATED contro1 requests create', JSON.stringify(body, null, 2));
+      return { id: `req_sim_${stableHash(body)}`, state: 'simulated' };
+    }
+    return await this.runJson(['requests', 'create', '--runtime', '--file', '-'], body);
   }
 
   async logAudit(payload: AuditRecord): Promise<Record<string, unknown>> {
-    return await this.post('/audit-records', payload, payload.external_request_id);
+    if (this.simulated) {
+      console.log('SIMULATED contro1 activity report', JSON.stringify(payload, null, 2));
+      return { id: `aud_sim_${stableHash(payload)}`, state: 'simulated' };
+    }
+    return await this.runJson(['activity', 'report', '--file', '-'], payload);
   }
 
   /**
@@ -129,33 +152,67 @@ export class Contro1Client {
    */
   async getRequest(requestId: string): Promise<Record<string, unknown>> {
     if (this.simulated) return { id: requestId, status: 'simulated' };
-    const response = await fetch(`${this.baseUrl}/requests/${encodeURIComponent(requestId)}`, {
-      headers: { Authorization: `Bearer ${this.apiKey}` },
-    });
-    const body = (await response.json()) as Record<string, unknown>;
-    if (!response.ok) throw new Error(`Contro1 GET /requests/${requestId} failed: ${response.status}`);
-    return body;
+    return await this.runJson(['requests', 'get', '--runtime', requestId]);
   }
 
-  private async post(path: string, payload: unknown, idempotencyKey?: string): Promise<Record<string, unknown>> {
-    if (this.simulated) {
-      console.log(`SIMULATED Contro1 POST ${path}`, JSON.stringify(payload, null, 2));
-      return { id: `req_sim_${stableHash(payload)}`, state: 'simulated' };
-    }
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-        ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
-      },
-      body: JSON.stringify(payload),
+  /**
+   * Run one fixed CLI command and parse its JSON. Bounded in time and output: a
+   * hung or runaway CLI fails this call (and so leaves the approval unresolved,
+   * which OpenClaw denies on expiry) instead of stalling the whole bridge.
+   */
+  private async runJson(args: string[], payload?: unknown): Promise<Record<string, unknown>> {
+    // The CLI does not read CONTRO1_API_URL from the environment; it takes the
+    // API origin from its profile or --api-url. Pass it explicitly, or a bridge
+    // configured for a staging or local stack would silently talk to production.
+    const apiUrl = this.env.CONTRO1_API_URL?.trim();
+    const fullArgs = [...args, ...(apiUrl ? ['--api-url', apiUrl] : []), '--format', 'json', '--quiet'];
+    const child = spawn(this.cliPath, fullArgs, {
+      env: this.env,
+      shell: false,
+      windowsHide: true,
     });
-    const body = (await response.json()) as Record<string, unknown>;
-    if (!response.ok) {
-      throw new Error(`Contro1 API failed: ${response.status} ${JSON.stringify(body)}`);
+    let stdout = '';
+    let stderr = '';
+    const output = new Promise<number | null>((resolve, reject) => {
+      const fail = (message: string) => {
+        clearTimeout(timer);
+        child.kill();
+        reject(new Error(`${message}: ${redact(stderr.slice(0, 500))}`));
+      };
+      const timer = setTimeout(() => fail(`contro1 CLI timed out after ${CLI_TIMEOUT_MS}ms`), CLI_TIMEOUT_MS);
+      child.stdout.setEncoding('utf8');
+      child.stderr.setEncoding('utf8');
+      child.stdout.on('data', (chunk: string) => {
+        stdout += chunk;
+        if (stdout.length > CLI_MAX_OUTPUT) fail('contro1 CLI stdout exceeded limit');
+      });
+      child.stderr.on('data', (chunk: string) => {
+        stderr += chunk;
+        if (stderr.length > CLI_MAX_OUTPUT) fail('contro1 CLI stderr exceeded limit');
+      });
+      child.on('error', (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        resolve(code);
+      });
+    });
+    if (payload !== undefined) {
+      child.stdin.end(JSON.stringify(payload));
+    } else {
+      child.stdin.end();
     }
-    return body;
+    const code = await output;
+    if (code !== 0) {
+      throw new Error(`contro1 CLI exited with ${code}: ${redact(stderr)}`);
+    }
+    try {
+      return JSON.parse(stdout) as Record<string, unknown>;
+    } catch {
+      throw new Error(`contro1 CLI returned invalid JSON: ${redact(stdout.slice(0, 200))}`);
+    }
   }
 }
 
@@ -197,4 +254,11 @@ export function canonicalJson(value: unknown): string {
     .filter(([, v]) => v !== undefined)
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
+}
+
+function redact(value: string): string {
+  return value
+    .replace(/cc_live_[A-Za-z0-9._-]+/g, 'cc_live_[redacted]')
+    .replace(/cc_test_[A-Za-z0-9._-]+/g, 'cc_test_[redacted]')
+    .replace(/cco_cli_[A-Za-z0-9._-]+/g, 'cco_cli_[redacted]');
 }

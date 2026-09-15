@@ -32,6 +32,7 @@ export type BridgeOptions = {
   store: PendingStore;
   policy: PolicyConfig;
   publicBaseUrl: string;
+  deliveryMode?: 'poll' | 'webhook';
   /** Grant allow-always instead of allow-once when a reviewer approves. Off by default. */
   allowAlways?: boolean;
 };
@@ -120,6 +121,27 @@ export class ApprovalBridge {
     return { seen: pending.length, created };
   }
 
+  async pollContro1Decisions(): Promise<{ checked: number; resolved: number; failed: number }> {
+    const pending = await this.options.store.listPending();
+    let resolved = 0;
+    let failed = 0;
+    for (const item of pending) {
+      // One unreadable request must not stall every other approval behind it.
+      // A failure leaves the approval unresolved, which OpenClaw denies on expiry.
+      try {
+        const request = await this.options.contro1.getRequest(item.contro1_request_id);
+        const status = classifyContro1Status(request);
+        if (status === 'pending') continue;
+        await this.applyDecision({ request_id: item.contro1_request_id, status });
+        resolved += 1;
+      } catch (error) {
+        failed += 1;
+        console.error(`Contro1 request ${item.contro1_request_id}: ${(error as Error).message}`);
+      }
+    }
+    return { checked: pending.length, resolved, failed };
+  }
+
   /**
    * Route one approval. Returns true when a Contro1 request was created and a
    * human now owns the decision.
@@ -185,7 +207,7 @@ export class ApprovalBridge {
       },
       continuation: {
         mode: 'decision',
-        webhook_url: `${this.options.publicBaseUrl}/contro1/callback`,
+        webhook_url: this.options.deliveryMode === 'webhook' ? `${this.options.publicBaseUrl}/contro1/callback` : undefined,
         // Contro1 must decide before OpenClaw's own expiry, or the decision
         // arrives after the gateway has already denied the command.
         expires_at: approval.expiresAtMs ? new Date(approval.expiresAtMs).toISOString() : undefined,
@@ -427,6 +449,31 @@ function actionType(approval: OpenClawPendingApproval): string {
 
 function truncate(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}
+
+/**
+ * Every request state in which a human decision exists. A decided request moves
+ * on from `answered` into the callback states, so a bridge that only knows
+ * `answered` and `closed` sees a real decision as pending forever.
+ */
+const DECIDED_STATES = new Set(['answered', 'callback_pending', 'callback_delivered', 'callback_failed', 'closed']);
+
+/**
+ * `state` says WHETHER a decision exists; the API's derived `status` says WHAT
+ * it was. Neither is enough alone: `status` reads `timed_out` for a request
+ * nobody has answered yet. Anything other than an explicit approval denies.
+ * Kept in step with classifyContro1Request in @contro1/approval-bridge-core.
+ */
+export function classifyContro1Status(request: Record<string, unknown>): 'pending' | 'approved' | 'denied' | 'expired' | 'cancelled' {
+  const state = String(request.state ?? '').toLowerCase();
+  if (state === 'expired') return 'expired';
+  if (state === 'cancelled') return 'cancelled';
+  if (!DECIDED_STATES.has(state)) return 'pending';
+  const protocol = request.protocol_response && typeof request.protocol_response === 'object'
+    ? request.protocol_response as Record<string, unknown>
+    : {};
+  const status = String(request.status ?? protocol.status ?? '').toLowerCase();
+  return status === 'approved' ? 'approved' : 'denied';
 }
 
 export type { RiskLevel, PolicyResult };

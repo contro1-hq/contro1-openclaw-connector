@@ -56,11 +56,11 @@ curl -sX POST "$CONTRO1_BRIDGE_URL/agent/audit" \
   }'
 ```
 
-If the `contro1` CLI is installed on your host, you can use it directly instead
-of curl - `contro1 audit log ...` to record an action, or `contro1 requests
-create ...` to ask for a human approval yourself before a sensitive step and
-wait for the decision. See https://contro1.com/docs/cli. Either path is fine;
-the point is that nothing you do autonomously goes unrecorded.
+Do not call the `contro1` CLI directly from inside the agent unless the host
+owner explicitly exposed a secret-free wrapper for you. The Contro1 Agent
+Credential belongs to the host bridge, not to the assistant process. Your normal
+path is the narrow `CONTRO1_BRIDGE_URL` endpoint above; the bridge records the
+event with its own credential after validating the request shape.
 
 Guidance:
 

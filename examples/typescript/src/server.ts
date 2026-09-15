@@ -18,6 +18,7 @@ const webhookSecret = process.env.CONTRO1_WEBHOOK_SECRET || '';
 const callbackMaxSkewSeconds = Number(process.env.CALLBACK_MAX_SKEW_SECONDS || '300');
 const pollIntervalMs = Number(process.env.OPENCLAW_POLL_INTERVAL_MS || '3000');
 const transportName = (process.env.OPENCLAW_TRANSPORT || 'cli').toLowerCase();
+const deliveryMode = (process.env.CONTRO1_DELIVERY_MODE || 'poll').toLowerCase() === 'webhook' ? 'webhook' : 'poll';
 const allowAlways = (process.env.CONTRO1_GRANT_ALLOW_ALWAYS || 'false').toLowerCase() === 'true';
 
 const policy = loadPolicy(process.env.CONTRO1_POLICY_FILE ? fs.readFileSync(process.env.CONTRO1_POLICY_FILE, 'utf8') : null);
@@ -47,6 +48,7 @@ const bridge = new ApprovalBridge({
   store,
   policy,
   publicBaseUrl,
+  deliveryMode,
   allowAlways,
 });
 
@@ -153,26 +155,37 @@ app.use((error: Error, _req: express.Request, res: express.Response, _next: expr
 
 app.listen(port, () => {
   console.log(`Contro1 OpenClaw approval bridge listening on :${port}`);
-  console.log(`transport=${transport.name} callback=${publicBaseUrl}/contro1/callback`);
-  if (!webhookSecret) {
+  console.log(`transport=${transport.name} delivery=${deliveryMode} callback=${publicBaseUrl}/contro1/callback`);
+  if (deliveryMode === 'webhook' && !webhookSecret) {
     console.warn('CONTRO1_WEBHOOK_SECRET is not set. Every callback will be rejected, which is the correct failure mode.');
   }
 });
 
-// Poll OpenClaw for approvals nobody has routed yet. The mock transport is
-// driven by POST /mock/approvals instead, so it does not need a timer.
-if (transportName !== 'mock') {
-  const tick = async () => {
-    try {
+// One loop, never overlapping. Each step spawns the CLI, so a tick can outlast
+// the interval; a second tick starting before the first finished would read the
+// same unresolved approval and resolve it twice.
+let tickInFlight = false;
+const tick = async () => {
+  if (tickInFlight) return;
+  tickInFlight = true;
+  try {
+    // Poll OpenClaw for approvals nobody has routed yet. The mock transport is
+    // driven by POST /mock/approvals instead.
+    if (transportName !== 'mock') {
       const result = await bridge.sync();
       if (result.created > 0) console.log(`Routed ${result.created} new OpenClaw approval(s) to Contro1.`);
-    } catch (error) {
-      console.error('OpenClaw poll failed:', (error as Error).message);
     }
-  };
-  setInterval(tick, pollIntervalMs).unref();
-  void tick();
-}
+    const decisions = await bridge.pollContro1Decisions();
+    if (decisions.resolved > 0) console.log(`Applied ${decisions.resolved} Contro1 decision(s) to OpenClaw.`);
+    if (decisions.failed > 0) console.error(`Could not read ${decisions.failed} Contro1 decision(s); they stay pending and OpenClaw denies on expiry.`);
+  } catch (error) {
+    console.error('Bridge poll failed:', (error as Error).message);
+  } finally {
+    tickInFlight = false;
+  }
+};
+setInterval(() => void tick(), pollIntervalMs).unref();
+void tick();
 
 // Drop pending entries well past OpenClaw's 30-minute expiry so a long-running
 // process does not accumulate state for approvals that can no longer be acted on.

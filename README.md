@@ -1,6 +1,6 @@
 # Contro1 OpenClaw Connector
 
-**OpenClaw knows how to stop before a risky command. Contro1 governs who approves it, how it routes, and what evidence survives.** This connector places a human-approval, role-routing, and signed-audit layer in front of OpenClaw exec and plugin approvals, through an external bridge that never runs inside the gateway process.
+**OpenClaw knows how to stop before a risky command. Contro1 governs who approves it, how it routes, and what evidence survives.** This connector places a human-approval, role-routing, and signed-audit layer in front of OpenClaw exec and plugin approvals, through an external host bridge that never runs inside the gateway process and never exposes the Contro1 Agent Credential to the assistant.
 
 Repository description:
 
@@ -13,7 +13,7 @@ Repository description:
 - Contro1 CLI (your assistant can use it too): https://contro1.com/docs/cli
 - Agent Integration Kit: https://contro1.com/agent-kit
 
-> Because an OpenClaw assistant can run shell commands, it can also use the `contro1` CLI directly - to create an approval request, wait for the decision, log an autonomous action, or pull evidence - without going through the bridge. The bridge governs the exec/plugin approvals OpenClaw already raises; the CLI is for approvals and logging the assistant chooses to ask for itself. See the [CLI docs](https://contro1.com/docs/cli).
+> Because an OpenClaw assistant can run shell commands, do not place a Contro1 runtime credential where the assistant can read it. The bridge runs on the host, owns the Agent Credential, and exposes only narrow local endpoints/tools. The Contro1 Remote MCP remains the build-time discovery/setup path; the Contro1 CLI is the host-side runtime contract.
 
 OpenClaw is an open-source personal AI assistant that runs on your own machine, answers on the channels you already use (WhatsApp, Telegram, iMessage, Signal, Slack, and more), keeps persistent memory, browses the web, runs shell commands, manages email and calendar, and can write its own skills. It acts autonomously in the background. This connector governs what it is allowed to do.
 
@@ -31,7 +31,7 @@ Contro1 decides whether each is auto-allowed, routed to a human, or blocked. Eve
 
 ## Two parts: bridge and ClawHub plugin
 
-- **[Bridge](examples/typescript)** - governance. Runs outside the gateway, holds the Contro1 credentials, routes approvals to the right human, and keeps signed evidence.
+- **[Bridge](examples/typescript)** - governance. Runs outside the gateway, holds the Contro1 Agent Credential, calls the Contro1 CLI runtime contract, routes approvals to the right human, and keeps signed evidence.
 - **[ClawHub plugin](plugin)** - coverage. A thin, secret-free plugin that uses OpenClaw's `before_tool_call` hook to turn *any* sensitive tool call (email, browser purchase, file delete, deploy) into an approval - not just host exec. It holds no credentials and makes no network calls; the bridge does the credential-bearing work. Install it from [ClawHub](https://clawhub.ai/contro1/plugins/openclaw-approvals-plugin) for one click. **Free up to 1,000 approval requests per month.**
 
 You can run the bridge alone (governs exec/plugin approvals OpenClaw already raises) or add the plugin to extend coverage to every sensitive tool call.
@@ -56,7 +56,7 @@ curl -sX POST http://localhost:8092/mock/approvals \
   -d '{"rawCommand":"sudo systemctl restart api","agentId":"main","sessionKey":"whatsapp:+15550001111"}'
 ```
 
-Without a `CONTRO1_API_KEY` the bridge runs in simulated mode and logs the request it would create. Set your key and webhook secret from **Settings -> APIs & Webhooks** in Contro1 to route to a real reviewer.
+Without a Contro1 runtime token the bridge runs in simulated mode and logs the request it would create. Set `CONTRO1_AGENT_TOKEN_FILE` or `CONTRO1_AGENT_TOKEN` on the host to route to a real reviewer. Browser-issued `cco_cli_` tokens are not valid for runtime execution.
 
 ## Run the tests
 
@@ -73,15 +73,17 @@ The suite covers the fail-closed rules: tampered signature, stale timestamp, unk
 
 - Create an account and organization.
 - Open **Settings -> APIs & Webhooks**.
-- Create an API key named e.g. `OpenClaw approval bridge` and set it as `CONTRO1_API_KEY`.
-- Reveal or rotate the organization webhook secret and set it as `CONTRO1_WEBHOOK_SECRET`.
+- Create an Agent Credential bound to the OpenClaw agent and store it on the host as `CONTRO1_AGENT_TOKEN_FILE` or `CONTRO1_AGENT_TOKEN`.
+- Verify it with `contro1 runtime status --format json --quiet` and `contro1 bridge doctor --target openclaw --format json --quiet`.
+- If using legacy webhook callback mode, reveal or rotate the organization webhook secret and set it as `CONTRO1_WEBHOOK_SECRET`.
 - Choose where approvals go: dashboard, Slack, Microsoft Teams, or your operator workflow.
 - Define reviewer routing (required role, department, SLA, escalation).
 
 ### In this bridge deployment
 
-- Deploy `examples/typescript` on any host that can receive HTTPS (Cloud Run, ECS, Kubernetes, Render, Fly.io, a VM).
-- Set `PUBLIC_BASE_URL` to its public address; Contro1 posts the signed decision to `<PUBLIC_BASE_URL>/contro1/callback`.
+- Deploy `examples/typescript` on the host that runs OpenClaw, or any host that can reach it. In the default polling mode it needs no inbound HTTPS.
+- Install a `contro1` CLI that includes the runtime commands (`runtime status`, `activity report`); the bridge calls it for every Contro1 operation.
+- Prefer polling through the Contro1 CLI for local/private hosts. Set `PUBLIC_BASE_URL` only when using legacy webhook callback mode; Contro1 posts the signed decision to `<PUBLIC_BASE_URL>/contro1/callback`.
 - Give it an OpenClaw operator token with `operator.approvals` (full `pending` enumeration currently also draws on `operator.admin`).
 - Keep the API key and webhook secret out of source control.
 
