@@ -72,8 +72,8 @@ The suite covers the fail-closed rules: tampered signature, stale timestamp, unk
 ### In Contro1
 
 - Create an account and organization.
-- Open **Settings -> APIs & Webhooks**.
-- Create an Agent Credential bound to the OpenClaw agent and store it on the host as `CONTRO1_AGENT_TOKEN_FILE` or `CONTRO1_AGENT_TOKEN`.
+- Register an agent for the bridge and open **Settings > Agent credentials**.
+- Create an Agent Credential bound to that agent (scopes `requests:create`, `requests:read`, `requests:cancel_own`, `audit:write`) and store it on the host as `CONTRO1_AGENT_TOKEN_FILE` or `CONTRO1_AGENT_TOKEN`.
 - Verify it with `contro1 runtime status --format json --quiet` and `contro1 bridge doctor --target openclaw --format json --quiet`.
 - If using legacy webhook callback mode, reveal or rotate the organization webhook secret and set it as `CONTRO1_WEBHOOK_SECRET`.
 - Choose where approvals go: dashboard, Slack, Microsoft Teams, or your operator workflow.
@@ -82,10 +82,10 @@ The suite covers the fail-closed rules: tampered signature, stale timestamp, unk
 ### In this bridge deployment
 
 - Deploy `examples/typescript` on the host that runs OpenClaw, or any host that can reach it. In the default polling mode it needs no inbound HTTPS.
-- Install a `contro1` CLI that includes the runtime commands (`runtime status`, `activity report`); the bridge calls it for every Contro1 operation.
+- Install the `contro1` CLI **0.2.0 or later** (it adds `--runtime`, `runtime status` and `activity report`); the bridge calls it for every Contro1 operation. Set `CONTRO1_API_URL` only for a staging or self-hosted stack; the bridge passes it as `--api-url`.
 - Prefer polling through the Contro1 CLI for local/private hosts. Set `PUBLIC_BASE_URL` only when using legacy webhook callback mode; Contro1 posts the signed decision to `<PUBLIC_BASE_URL>/contro1/callback`.
 - Give it an OpenClaw operator token with `operator.approvals` (full `pending` enumeration currently also draws on `operator.admin`).
-- Keep the API key and webhook secret out of source control.
+- Keep the Agent Credential (and, in webhook mode, the webhook secret) out of source control and out of anything the assistant can read.
 
 ### In OpenClaw
 
@@ -100,7 +100,7 @@ See [.env.example](.env.example) for all variables and [docs/openclaw-connector.
 
 ## Compatibility
 
-Built and verified against OpenClaw **stable `v2026.7.1`**. The default `cli` transport uses only documented `openclaw approvals` commands. The `gateway` WebSocket transport is a preview pending the publication of `@openclaw/gateway-client` on npm.
+Built against OpenClaw **stable `v2026.7.1`**; the `openclaw approvals pending --json` and `resolve` commands the default `cli` transport uses are unchanged in the documentation for **`v2026.9.4`** (checked 2026-09-15). Since `v2026.8.1`, `allow-always` grants are directory-bound; the bridge resolves with `allow-once` by default, so this does not change its behavior. The `gateway` WebSocket transport is still a preview: `@openclaw/gateway-client` is now published on npm (`2026.9.4`), so it can be completed, but it is not implemented or tested yet.
 
 ## License
 

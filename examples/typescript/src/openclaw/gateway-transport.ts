@@ -14,13 +14,13 @@ import { OpenClawDecision, OpenClawPendingApproval, OpenClawTransport } from './
  * using the v3 payload built by `buildDeviceAuthPayloadV3` in
  * `packages/gateway-client/src/device-auth.ts`. That payload's exact byte
  * layout is not published as a spec - it is published as code, in
- * `@openclaw/gateway-client`, which as of OpenClaw v2026.7.1 still returns
+ * `@openclaw/gateway-client`, which when this connector was built still returned
  * E404 on npm ("npm may return E404 until the first package-bearing release is
- * published"). Reimplementing an authentication payload by guessing at its
+ * published"); it has since been published (2026.9.4). Reimplementing an authentication payload by guessing at its
  * shape is exactly the kind of thing that fails closed in testing and open in
  * production, so the connector does not guess.
  *
- * When `@openclaw/gateway-client` publishes, finish this class by:
+ * Now that `@openclaw/gateway-client` is published, finish this class by:
  *   1. adding the dependency and constructing its client with
  *      role `operator` and scopes `["operator.approvals", "operator.read"]`;
  *   2. subscribing to `exec.approval.requested` / `plugin.approval.requested`
@@ -37,7 +37,7 @@ export class OpenClawGatewayTransport implements OpenClawTransport {
     throw new Error(
       'The gateway WebSocket transport is a preview and is not implemented yet: the connect handshake ' +
         'needs the device-auth v3 signature from @openclaw/gateway-client, which is not published on npm ' +
-        'as of OpenClaw v2026.7.1. Use OPENCLAW_TRANSPORT=cli (the default) until it is.',
+        'when this connector was built. It is now published but this transport is not implemented yet. Use OPENCLAW_TRANSPORT=cli (the default).',
     );
   }
 

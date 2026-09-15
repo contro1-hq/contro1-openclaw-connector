@@ -6,7 +6,7 @@ This guide covers the threat model, the approval flow, policy defaults, the prot
 
 The connector was built against the official OpenClaw documentation and source at:
 
-- OpenClaw **stable `v2026.7.1`** (published 2026-07-13), the current stable release channel tag.
+- OpenClaw **stable `v2026.7.1`** (published 2026-07-13), the stable tag at the time of building. Re-checked against the `v2026.9.4` documentation on 2026-09-15: the `approvals pending --json` and `approvals resolve` surface is unchanged; `allow-always` grants became directory-bound in `v2026.8.1`, which does not affect the default `allow-once` resolution.
 - `docs.openclaw.ai/gateway/protocol` - frames, handshake, RPC method families, exec approvals.
 - `docs.openclaw.ai/tools/exec-approvals` and `.../exec-approvals-advanced` - the approval flow, `systemRunPlan` binding, 30-minute expiry, `askFallback`, channel forwarding config.
 - `docs.openclaw.ai/gateway/operator-scopes` - `operator.approvals` and scope mapping.
@@ -103,7 +103,7 @@ The bridge reaches OpenClaw through a single `OpenClawTransport` seam. Three imp
 
 - **`cli` (default, supported).** Uses the documented `openclaw approvals pending --json` and `openclaw approvals resolve <id> <decision>` commands. Polls for new approvals; because approvals stay pending for 30 minutes, a few-second poll interval adds negligible latency. Needs `operator.approvals` to resolve; full enumeration currently also draws on `operator.admin`.
 - **`mock`.** An in-process stand-in so the whole loop runs with no OpenClaw installed. Drives approvals via `POST /mock/approvals`.
-- **`gateway` (preview, not implemented).** Would subscribe to `exec.approval.requested` over the Gateway WebSocket and resolve via `approval.resolve`. It is intentionally left unimplemented: the `connect` handshake requires signing the server's challenge nonce with the device-auth **v3** payload from `@openclaw/gateway-client`, and that package still returns `E404` on npm as of `v2026.7.1`. The connector does not guess at an authentication payload's byte layout. Finish this transport once the package publishes; nothing else in the bridge changes.
+- **`gateway` (preview, not implemented).** Would subscribe to `exec.approval.requested` over the Gateway WebSocket and resolve via `approval.resolve`. It is intentionally left unimplemented: the `connect` handshake requires signing the server's challenge nonce with the device-auth **v3** payload from `@openclaw/gateway-client`, and that package was unpublished (`E404`) when the connector was built. It has since been published (`2026.9.4`), so the transport can now be built on the official client instead of a guessed payload. It is not implemented yet; nothing else in the bridge changes when it is.
 
 ## Configure OpenClaw so approvals actually stop
 

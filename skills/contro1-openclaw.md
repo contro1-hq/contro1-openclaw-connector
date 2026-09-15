@@ -90,4 +90,4 @@ When done, report:
 - audit event names added
 - polling/webhook verification and action-binding status
 - smoke tests performed (mock approve, deny, tamper, replay, expiry, binding mismatch)
-- remaining limitation: the Gateway WebSocket transport stays preview until `@openclaw/gateway-client` publishes the device-auth signature; the CLI transport is the supported path
+- remaining limitation: the Gateway WebSocket transport is still a preview (not implemented). `@openclaw/gateway-client` is now published on npm, so it can be built; until then the CLI transport is the supported path
