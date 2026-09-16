@@ -1,6 +1,6 @@
 # Contro1 OpenClaw Connector
 
-**OpenClaw knows how to stop before a risky command. Contro1 governs who approves it, how it routes, and what evidence survives.** This connector places a human-approval, role-routing, and signed-audit layer in front of OpenClaw exec and plugin approvals through an external host bridge and its local Contro1 broker.
+**Contro1 wraps your OpenClaw assistants.** Risky commands and sensitive tool calls come to Contro1 as approval requests, routed to the right person in your organization and kept in the audit trail. Each assistant has an accountable owner and its own connection, with no API key on the machine, and with the Contro1 MCP server it reaches company applications only through Contro1.
 
 Repository description:
 
@@ -97,6 +97,28 @@ The suite covers the fail-closed rules: tampered signature, stale timestamp, unk
 - Keep `askFallback: "deny"` so an unreachable bridge means deny, not run.
 - Set `skills.workshop.approvalPolicy` to `pending` so the assistant cannot rewrite its own skills to grant new powers.
 - Optionally install the `contro1-approvals` skill (`skills/contro1-approvals/SKILL.md`) into the assistant's skills directory and set `CONTRO1_BRIDGE_URL` so it self-logs autonomous actions to `POST /agent/audit`.
+
+### Optional: company applications through Contro1 (MCP)
+
+The bridge governs what OpenClaw stops for. To let an assistant use company applications (mail, calendar, tickets) with Contro1 deciding what it may do, give OpenClaw the Contro1 MCP server:
+
+1. In Contro1, open the agent, allow applications for its connection, and choose the application actions it may use. An administrator grants; anyone else sends a request that grants nothing until approved.
+2. Add the server to `openclaw.json`, pointing at that agent's own endpoint from the mapping file (`/etc/contro1/platforms/openclaw.json` on Linux):
+
+```json5
+{
+  mcp: {
+    servers: {
+      contro1: {
+        command: "contro1",
+        args: ["mcp", "serve", "--broker-endpoint", "<endpoint of this agent from the mapping file>"]
+      }
+    }
+  }
+}
+```
+
+OpenClaw MCP servers apply to the whole gateway, not to one agent. With a single agent on the computer that is exactly right. With several agents, one `contro1` entry would let every agent act as that one identity, so do not share it: keep the others on approvals only until you can give each its own gateway.
 
 ## Configuration
 

@@ -1,6 +1,14 @@
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+
+/** Where `contro1 connect openclaw` writes the mapping on each operating system. */
+export function defaultMappingFile(platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  if (platform === 'linux') return '/etc/contro1/platforms/openclaw.json';
+  if (platform === 'darwin') return '/Library/Application Support/Contro1/platforms/openclaw.json';
+  if (platform === 'win32') return `${env.ProgramData || 'C:\\ProgramData'}\\Contro1\\platforms\\openclaw.json`;
+  return undefined;
+}
 
 export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
 
@@ -132,7 +140,12 @@ export class Contro1Client {
     }
 
     // Each OpenClaw agent reaches Contro1 through its own broker endpoint.
-    const mappingPath = this.env.CONTRO1_PLATFORM_MAPPING_FILE?.trim();
+    // An explicit setting wins; otherwise the file contro1 connect wrote.
+    let mappingPath = this.env.CONTRO1_PLATFORM_MAPPING_FILE?.trim();
+    if (!mappingPath) {
+      const fallback = defaultMappingFile(process.platform, this.env);
+      if (fallback && existsSync(fallback)) mappingPath = fallback;
+    }
     if (!mappingPath) {
       throw new Contro1IdentityError('CONTRO1_PLATFORM_MAPPING_FILE is required. Run: contro1 connect openclaw');
     }
