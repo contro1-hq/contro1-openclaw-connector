@@ -40,11 +40,16 @@ You can run the bridge alone (governs exec/plugin approvals OpenClaw already rai
 
 OpenClaw plugins run **in-process with the gateway and are not sandboxed** - a faulty or hostile plugin can crash or compromise the whole gateway. So anything that holds a credential or makes the approval decision stays **outside** it, in the bridge. The optional [plugin](plugin) is safe to run in-process precisely because it does neither: it holds no credentials, makes no network calls, and only asks OpenClaw to pause. See [docs/openclaw-connector.md](docs/openclaw-connector.md).
 
-## Quick start (no OpenClaw, no cloud account)
+## Quick start (no OpenClaw gateway needed)
+
+Mock mode skips the OpenClaw gateway, not Contro1: the bridge still needs an
+owner-approved connection, so connect first.
 
 ```bash
+contro1 connect openclaw            # once per computer; the owner approves
 cd examples/typescript
 npm install
+cp ../../.env.example .env          # Linux path is preset; on Windows use C:\ProgramData\Contro1\platforms\openclaw.json
 OPENCLAW_TRANSPORT=mock npm run dev
 ```
 
@@ -81,7 +86,7 @@ The suite covers the fail-closed rules: tampered signature, stale timestamp, unk
 ### In this bridge deployment
 
 - Deploy `examples/typescript` on the host that runs OpenClaw, or any host that can reach it. In the default polling mode it needs no inbound HTTPS.
-- Install the `contro1` CLI **0.2.0 or later** (it adds `--runtime`, `runtime status` and `activity report`); the bridge calls it for every Contro1 operation. Set `CONTRO1_API_URL` only for a staging or self-hosted stack; the bridge passes it as `--api-url`.
+- Install the `contro1` CLI **0.2.0 or later** (it adds `contro1 connect`, the local Contro1 service and `activity report`); the bridge calls it for every Contro1 operation. Set `CONTRO1_API_URL` only for a staging or self-hosted stack; the bridge passes it as `--api-url`.
 - Prefer polling through the Contro1 CLI for local/private hosts. Set `PUBLIC_BASE_URL` only when using legacy webhook callback mode; Contro1 posts the signed decision to `<PUBLIC_BASE_URL>/contro1/callback`.
 - Give it an OpenClaw operator token with `operator.approvals` (full `pending` enumeration currently also draws on `operator.admin`).
 - Keep the mapping file and any webhook secret out of source control and out of anything the assistant can read.
