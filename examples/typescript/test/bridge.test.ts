@@ -16,9 +16,17 @@ function sign(body: string, timestamp: number): string {
 function newBridge() {
   const transport = new MockOpenClawTransport();
   const store = new InMemoryPendingStore();
-  // No API key: the client runs simulated and returns a deterministic request id.
+  let requestNumber = 0;
+  // Unit tests use a narrow in-memory port. Production always uses the broker
+  // mapping and has no simulated/token fallback.
+  const contro1 = {
+    forAgent: () => contro1,
+    createRequest: async () => ({ id: `req_test_${++requestNumber}`, state: 'queued' }),
+    getRequest: async () => ({ state: 'assigned', status: 'timed_out' }),
+    logAudit: async () => ({ id: 'aud_test' }),
+  } as unknown as Contro1Client;
   const bridge = new ApprovalBridge({
-    contro1: new Contro1Client({} as NodeJS.ProcessEnv),
+    contro1,
     transport,
     store,
     policy: DEFAULT_POLICY,
@@ -89,8 +97,13 @@ test('an approved decision resolves the exact bound approval once', async () => 
 function pollingBridge(getRequest: (id: string) => Promise<Record<string, unknown>>) {
   const transport = new MockOpenClawTransport();
   const store = new InMemoryPendingStore();
-  const contro1 = new Contro1Client({} as NodeJS.ProcessEnv);
-  (contro1 as any).getRequest = getRequest;
+  let requestNumber = 0;
+  const contro1 = {
+    forAgent: () => contro1,
+    createRequest: async () => ({ id: `req_test_${++requestNumber}`, state: 'queued' }),
+    getRequest,
+    logAudit: async () => ({ id: 'aud_test' }),
+  } as unknown as Contro1Client;
   const bridge = new ApprovalBridge({
     contro1,
     transport,
@@ -183,22 +196,11 @@ test('the real CLI reaches CONTRO1_API_URL with the runtime token', { skip: proc
   }
 });
 
-test('every Contro1 CLI call pins the runtime identity', async () => {
-  const contro1 = new Contro1Client({ CONTRO1_AGENT_TOKEN_FILE: '/run/secrets/token' } as NodeJS.ProcessEnv);
-  const calls: string[][] = [];
-  (contro1 as any).runJson = async (args: string[]) => {
-    calls.push(args);
-    return { id: 'req_1', state: 'queued' };
-  };
-  await contro1.createRequest({ question: 'q', context: 'c', continuation: { mode: 'decision' } } as any);
-  await contro1.getRequest('req_1');
-  await contro1.logAudit({ action: 'a', summary: 's' } as any);
-
-  for (const args of calls) {
-    const runtimeOnly = args[0] === 'activity' || (args[0] === 'actions' && (args[1] === 'invoke' || args[1] === 'cancel'));
-    assert.ok(runtimeOnly || args.includes('--runtime'), `contro1 ${args.join(' ')} would use the host user's login`);
-  }
-  assert.equal((contro1 as any).env.CONTRO1_TOKEN, undefined, 'the agent token is never copied into CONTRO1_TOKEN');
+test('static Contro1 credentials are rejected', () => {
+  assert.throws(
+    () => new Contro1Client({ CONTRO1_AGENT_TOKEN_FILE: '/run/secrets/token' } as NodeJS.ProcessEnv),
+    /CONTRO1_PLATFORM_MAPPING_FILE is required/,
+  );
 });
 
 test('decision classification uses state for whether and status for what', async () => {
@@ -287,4 +289,70 @@ test('sync does not create a duplicate request for the same approval', async () 
 
   const second = await bridge.sync();
   assert.equal(second.created, 0);
+});
+
+test('owner-approved connections: each OpenClaw agent uses its own endpoint and unknown agents fail closed', async () => {
+  const { mkdtempSync: mk, writeFileSync, rmSync: rm } = await import('node:fs');
+  const { tmpdir: td } = await import('node:os');
+  const { join: j } = await import('node:path');
+  const { Contro1IdentityError } = await import('../src/core/contro1.js');
+  const dir = mk(j(td(), 'openclaw-mapping-'));
+  try {
+    const mappingFile = j(dir, 'openclaw.json');
+    writeFileSync(mappingFile, JSON.stringify({
+      schema_version: 1, platform: 'openclaw', generated_at: 'now', digest: 'x',
+      entries: [
+        { platform_subject: 'main', agent_id: 'agt_main', enrollment_id: 'enr_1', endpoint_mode: 'approval_bridge_only', endpoint: 'npipe:////./pipe/contro1-ep-main', server_principal: 'S-1-5-80-1' },
+        { platform_subject: 'research', agent_id: 'agt_research', enrollment_id: 'enr_2', endpoint_mode: 'approval_bridge_only', endpoint: 'npipe:////./pipe/contro1-ep-research' },
+      ],
+    }));
+
+    assert.throws(
+      () => new Contro1Client({ CONTRO1_PLATFORM_MAPPING_FILE: mappingFile, CONTRO1_AGENT_TOKEN: 'cc_live_x' } as NodeJS.ProcessEnv),
+      Contro1IdentityError,
+      'a mapping and a token together are two identities',
+    );
+
+    const root = new Contro1Client({ CONTRO1_PLATFORM_MAPPING_FILE: mappingFile, PATH: '/bin' } as NodeJS.ProcessEnv);
+    await assert.rejects(() => root.createRequest({ title: 't', request_type: 'approval', source: { integration: 'x' }, continuation: { mode: 'decision' } }), Contro1IdentityError, 'the root client never sends');
+    assert.throws(() => root.forAgent('intruder'), Contro1IdentityError, 'an unmapped agent is refused, never defaulted');
+    assert.throws(() => root.forAgent(undefined), Contro1IdentityError);
+
+    const main = root.forAgent('main');
+    assert.equal(main.contro1AgentId, 'agt_main');
+    const envOf = (client: Contro1Client) => (client as unknown as { env: NodeJS.ProcessEnv }).env;
+    assert.equal(envOf(main).CONTRO1_BROKER_ENDPOINT, 'npipe:////./pipe/contro1-ep-main');
+    assert.equal(envOf(main).CONTRO1_BROKER_PRINCIPAL, 'S-1-5-80-1');
+    assert.equal(envOf(main).CONTRO1_AGENT_TOKEN, undefined);
+    assert.equal(envOf(root.forAgent('research')).CONTRO1_BROKER_ENDPOINT, 'npipe:////./pipe/contro1-ep-research');
+
+    // The bridge sends through the agent's own client and never claims the
+    // native OpenClaw id as the Contro1 agent.
+    const sent: Array<{ client: string | undefined; body: any }> = [];
+    const realForAgent = root.forAgent.bind(root);
+    (root as any).forAgent = (id: string) => {
+      const bound = realForAgent(id);
+      (bound as any).runJson = async (_args: string[], body: unknown) => {
+        sent.push({ client: bound.contro1AgentId, body });
+        return { id: 'req_1', state: 'queued' };
+      };
+      return bound;
+    };
+    await root.forAgent('research').createRequest({
+      title: 'Approve', request_type: 'approval', source: { integration: 'openclaw' },
+      actor: { agent_name: 'OpenClaw agent research' }, continuation: { mode: 'decision' },
+      metadata: { openclaw: { agent_id: 'research' } },
+    });
+    assert.equal(sent[0]!.client, 'agt_research');
+    assert.equal(sent[0]!.body.actor.agent_id, undefined);
+  } finally {
+    rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('the bridge never sends the native OpenClaw agent id as the Contro1 agent', async () => {
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../src/bridge.ts', import.meta.url), 'utf8');
+  assert.ok(!/actor:\s*\{\s*agent_id:/u.test(source), 'no actor.agent_id from OpenClaw ids');
+  assert.ok(!/options\.contro1\.(createRequest|getRequest|logAudit)\(/u.test(source), 'every call goes through forAgent');
 });

@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 
 export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
 
@@ -104,44 +105,91 @@ export function normalizeProtocolRequest(request: ProtocolRequest): Record<strin
   };
 }
 
+const STATIC_CREDENTIAL_VARIABLES = ['CONTRO1_AGENT_TOKEN_FILE', 'CONTRO1_AGENT_TOKEN', 'CONTRO1_TOKEN', 'CONTRO1_API_KEY'] as const;
+
+type MappingEntry = { platform_subject: string; agent_id: string; endpoint: string; endpoint_mode: string; server_principal?: string };
+
+export class Contro1IdentityError extends Error {}
+
 export class Contro1Client {
-  private readonly simulated: boolean;
   private readonly cliPath: string;
   private readonly env: NodeJS.ProcessEnv;
+  private readonly mappingPath: string;
+  private mapping?: MappingEntry[];
+  /** Set on a client bound to one mapped agent (see forAgent). */
+  readonly contro1AgentId?: string;
 
-  constructor(env: NodeJS.ProcessEnv = process.env) {
+  constructor(env: NodeJS.ProcessEnv = process.env, bound?: { agentId: string }) {
     this.env = { ...env };
-    // No token is copied between variables here. Every CLI call below passes
-    // --runtime, so the CLI itself resolves ONE identity (AGENT_TOKEN_FILE, then
-    // AGENT_TOKEN, then CONTRO1_TOKEN), refuses a browser-issued token, and never
-    // falls back to the keychain of whoever is logged in on this host.
-    if (this.env.CONTRO1_API_KEY && !this.env.CONTRO1_TOKEN && !this.env.CONTRO1_AGENT_TOKEN && !this.env.CONTRO1_AGENT_TOKEN_FILE) {
-      this.env.CONTRO1_TOKEN = this.env.CONTRO1_API_KEY;
-    }
+    this.cliPath = env.CONTRO1_CLI || 'contro1';
     if (this.env.CONTRO1_BASE_URL && !this.env.CONTRO1_API_URL) {
       this.env.CONTRO1_API_URL = this.env.CONTRO1_BASE_URL.replace(/\/api\/centcom\/v1\/?$/u, '');
     }
-    this.cliPath = env.CONTRO1_CLI || 'contro1';
-    this.simulated = !this.env.CONTRO1_AGENT_TOKEN && !this.env.CONTRO1_AGENT_TOKEN_FILE && !this.env.CONTRO1_TOKEN;
-    if (this.simulated) {
-      console.warn('No Contro1 runtime token is set. Running in simulated mode: requests are logged, never sent.');
+    if (bound) {
+      this.contro1AgentId = bound.agentId;
+      this.mappingPath = '';
+      return;
+    }
+
+    // Each OpenClaw agent reaches Contro1 through its own broker endpoint.
+    const mappingPath = this.env.CONTRO1_PLATFORM_MAPPING_FILE?.trim();
+    if (!mappingPath) {
+      throw new Contro1IdentityError('CONTRO1_PLATFORM_MAPPING_FILE is required. Run: contro1 connect openclaw');
+    }
+    if (STATIC_CREDENTIAL_VARIABLES.some((name) => this.env[name]?.trim())) {
+      throw new Contro1IdentityError('Static Contro1 credentials are unsupported. Remove them and run: contro1 connect openclaw');
+    }
+    this.mappingPath = mappingPath;
+  }
+
+  /**
+   * The client for one OpenClaw agent. An agent that is not mapped is refused:
+   * there is no default identity.
+   */
+  forAgent(openclawAgentId: string | undefined): Contro1Client {
+    if (!openclawAgentId) {
+      throw new Contro1IdentityError('This approval has no OpenClaw agent id, so it cannot be attributed to a connected agent.');
+    }
+    const entry = this.loadMapping().find((e) => e.platform_subject === openclawAgentId);
+    if (!entry) {
+      throw new Contro1IdentityError(`OpenClaw agent ${openclawAgentId} is not connected to Contro1 on this computer. Run: contro1 connect openclaw`);
+    }
+    const env: NodeJS.ProcessEnv = { ...this.env, CONTRO1_BROKER_ENDPOINT: entry.endpoint };
+    delete env.CONTRO1_PLATFORM_MAPPING_FILE;
+    for (const name of STATIC_CREDENTIAL_VARIABLES) delete env[name];
+    if (entry.server_principal) env.CONTRO1_BROKER_PRINCIPAL = entry.server_principal;
+    return new Contro1Client(env, { agentId: entry.agent_id });
+  }
+
+  private loadMapping(): MappingEntry[] {
+    if (this.mapping) return this.mapping;
+    let parsed: { schema_version?: number; entries?: MappingEntry[] };
+    try {
+      parsed = JSON.parse(readFileSync(this.mappingPath!, 'utf8'));
+    } catch (error) {
+      throw new Contro1IdentityError(`Cannot read the Contro1 mapping file: ${(error as Error).message}`);
+    }
+    if (parsed.schema_version !== 1 || !Array.isArray(parsed.entries)) {
+      throw new Contro1IdentityError('The Contro1 mapping file has an unsupported format. Run: contro1 doctor openclaw');
+    }
+    this.mapping = parsed.entries;
+    return this.mapping;
+  }
+
+  private assertBound(): void {
+    if (!this.contro1AgentId) {
+      throw new Contro1IdentityError('Call forAgent(agentId) before using the Contro1 client.');
     }
   }
 
   async createRequest(payload: ProtocolRequest): Promise<Record<string, unknown>> {
+    this.assertBound();
     const body = normalizeProtocolRequest(payload);
-    if (this.simulated) {
-      console.log('SIMULATED contro1 requests create', JSON.stringify(body, null, 2));
-      return { id: `req_sim_${stableHash(body)}`, state: 'simulated' };
-    }
     return await this.runJson(['requests', 'create', '--runtime', '--file', '-'], body);
   }
 
   async logAudit(payload: AuditRecord): Promise<Record<string, unknown>> {
-    if (this.simulated) {
-      console.log('SIMULATED contro1 activity report', JSON.stringify(payload, null, 2));
-      return { id: `aud_sim_${stableHash(payload)}`, state: 'simulated' };
-    }
+    this.assertBound();
     return await this.runJson(['activity', 'report', '--file', '-'], payload);
   }
 
@@ -151,7 +199,7 @@ export class Contro1Client {
    * second round trip is cheaper than being wrong.
    */
   async getRequest(requestId: string): Promise<Record<string, unknown>> {
-    if (this.simulated) return { id: requestId, status: 'simulated' };
+    this.assertBound();
     return await this.runJson(['requests', 'get', '--runtime', requestId]);
   }
 
@@ -260,5 +308,6 @@ function redact(value: string): string {
   return value
     .replace(/cc_live_[A-Za-z0-9._-]+/g, 'cc_live_[redacted]')
     .replace(/cc_test_[A-Za-z0-9._-]+/g, 'cc_test_[redacted]')
-    .replace(/cco_cli_[A-Za-z0-9._-]+/g, 'cco_cli_[redacted]');
+    .replace(/cco_cli_[A-Za-z0-9._-]+/g, 'cco_cli_[redacted]')
+    .replace(/ccr_live_[A-Za-z0-9._-]+/g, 'ccr_live_[redacted]');
 }

@@ -75,11 +75,12 @@ export class ApprovalBridge {
    */
   async logAutonomousAction(input: AutonomousActionInput): Promise<void> {
     const correlationId = input.session_key || input.agent_id || 'openclaw';
-    await this.options.contro1.logAudit({
+    await this.options.contro1.forAgent(input.agent_id).logAudit({
       action: input.action.startsWith('openclaw.') ? input.action : `openclaw.autonomous.${input.action}`,
       summary: input.summary,
       source: { integration: INTEGRATION, workflow_id: WORKFLOW_ID },
-      actor: { agent_id: input.agent_id },
+      // The Contro1 agent comes from the credential; the OpenClaw id is provenance.
+      actor: { agent_name: input.agent_id ? `OpenClaw agent ${input.agent_id}` : undefined },
       resource: input.session_key ? { type: 'openclaw.session', uri: input.session_key } : undefined,
       outcome: input.outcome || 'success',
       severity: input.outcome === 'failure' ? 'warning' : 'info',
@@ -90,6 +91,7 @@ export class ApprovalBridge {
         .digest('hex')
         .slice(0, 24)}`,
       metadata: {
+        openclaw: { agent_id: input.agent_id },
         machine_observed: input.observed,
         agent_reported: input.reason ? { reason: input.reason } : undefined,
       },
@@ -129,7 +131,7 @@ export class ApprovalBridge {
       // One unreadable request must not stall every other approval behind it.
       // A failure leaves the approval unresolved, which OpenClaw denies on expiry.
       try {
-        const request = await this.options.contro1.getRequest(item.contro1_request_id);
+        const request = await this.options.contro1.forAgent(item.agent_id).getRequest(item.contro1_request_id);
         const status = classifyContro1Status(request);
         if (status === 'pending') continue;
         await this.applyDecision({ request_id: item.contro1_request_id, status });
@@ -180,7 +182,7 @@ export class ApprovalBridge {
     }
 
     const externalRequestId = `openclaw:${approval.kind || 'exec'}:${approval.id}`;
-    const created = await this.options.contro1.createRequest({
+    const created = await this.options.contro1.forAgent(approval.agentId).createRequest({
       title: `Approve OpenClaw ${approval.kind || 'exec'} action: ${truncate(summary, 90)}`,
       description: policy.reason,
       request_type: 'approval',
@@ -196,7 +198,9 @@ export class ApprovalBridge {
         priority: policy.risk === 'critical' || policy.risk === 'high' ? 'urgent' : 'normal',
         sla_minutes: policy.sla_minutes,
       },
-      actor: { agent_id: approval.agentId, agent_name: approval.agentId ? `OpenClaw agent ${approval.agentId}` : undefined },
+      // Never the native OpenClaw id as actor.agent_id: Contro1 would read it
+      // as a claim to be a different Contro1 agent and refuse the request.
+      actor: { agent_name: approval.agentId ? `OpenClaw agent ${approval.agentId}` : undefined },
       context: {
         action_type: actionType(approval),
         tool_name: approval.kind === 'plugin' ? 'openclaw.plugin' : 'openclaw.exec',
@@ -238,6 +242,7 @@ export class ApprovalBridge {
         machine_observed: machineObserved,
         agent_reported: { summary },
         openclaw: {
+          agent_id: approval.agentId,
           approval_id: approval.id,
           kind: approval.kind || 'exec',
           expires_at_ms: approval.expiresAtMs,
@@ -384,11 +389,11 @@ export class ApprovalBridge {
     metadata?: Record<string, unknown>;
   }): Promise<void> {
     try {
-      await this.options.contro1.logAudit({
+      await this.options.contro1.forAgent(input.approval.agentId).logAudit({
         action: input.action,
         summary: input.summary,
         source: { integration: INTEGRATION, workflow_id: WORKFLOW_ID, run_id: input.approval.id },
-        actor: { agent_id: input.approval.agentId },
+        actor: { agent_name: input.approval.agentId ? `OpenClaw agent ${input.approval.agentId}` : undefined },
         resource: { type: 'openclaw.approval', id: input.approval.id, uri: input.approval.sessionKey },
         outcome: input.outcome,
         severity: input.outcome === 'success' ? 'info' : 'warning',
@@ -411,11 +416,11 @@ export class ApprovalBridge {
     metadata?: Record<string, unknown>;
   }): Promise<void> {
     try {
-      await this.options.contro1.logAudit({
+      await this.options.contro1.forAgent(input.pending.agent_id).logAudit({
         action: input.action,
         summary: input.summary,
         source: { integration: INTEGRATION, workflow_id: WORKFLOW_ID, run_id: input.pending.binding.approval_id },
-        actor: { agent_id: input.pending.agent_id },
+        actor: { agent_name: input.pending.agent_id ? `OpenClaw agent ${input.pending.agent_id}` : undefined },
         resource: {
           type: 'openclaw.approval',
           id: input.pending.binding.approval_id,

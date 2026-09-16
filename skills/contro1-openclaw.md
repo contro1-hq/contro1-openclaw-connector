@@ -24,7 +24,7 @@ Before coding in a customer repo, inspect:
 - how OpenClaw is configured: `tools.exec.mode` (`deny` / `allowlist` / `ask` / `auto` / `full`), `ask`, and `askFallback`
 - whether the bridge will reach OpenClaw via the `openclaw` CLI (default) or the Gateway WebSocket (preview)
 - what operator credentials the bridge holds; approval resolution needs `operator.approvals`, and full `pending` enumeration currently also draws on `operator.admin`
-- where the host bridge stores its Contro1 Agent Credential (`CONTRO1_AGENT_TOKEN_FILE` preferred); the credential must not be readable by the agent or container
+- that `contro1 connect openclaw` has installed the host broker and written `CONTRO1_PLATFORM_MAPPING_FILE`; no Contro1 credential may be readable by the agent or container
 - whether Contro1 decisions are read by polling (default for local/private hosts) or by signed webhook callback (optional public-host mode)
 - how agent id, session key, and host (gateway vs node) are represented in this deployment
 - which sessions are production and must never be auto-allowed
@@ -40,7 +40,7 @@ Before coding in a customer repo, inspect:
 - Bind every approval to the machine-observed facts (command, argv, cwd, agent, session) with a hash; re-check the binding before resolving, mirroring OpenClaw's own `systemRunPlan` mismatch rejection.
 - Only machine-observed facts feed risk and routing. Text the agent authored is display-only.
 - Fail closed on invalid webhook signature, stale webhook timestamp (older than 5 minutes), unknown request id, expired approval, polling/auth failure, or binding mismatch.
-- Treat the Contro1 bridge manifest as discovery and UX metadata only. The security boundary is server-side scopes, action grants, agent binding, binding hashes, and the fact that the runtime token is not exposed to the agent.
+- Treat the Contro1 bridge manifest as discovery and UX metadata only. The security boundary is server-side scopes, action grants, agent binding, binding hashes, and the broker-held identity.
 - Beat OpenClaw's 30-minute approval expiry: set the Contro1 request `expires_at` to the approval's `expiresAtMs`.
 - Log auto-allowed and denied actions as audit records, not just approvals, so the timeline has no holes.
 
@@ -85,7 +85,7 @@ When done, report:
 - which OpenClaw approvals now route through Contro1 (exec, plugin, system-agent)
 - the OpenClaw config applied (`tools.exec.mode`, `ask`, `askFallback`) and why `askFallback` stays `deny`
 - the operator scope granted to the bridge (`operator.approvals`, and whether `operator.admin` was needed for enumeration)
-- the Contro1 runtime mode used: host bridge with Agent Credential, and whether delivery is polling or webhook
+- the Contro1 runtime mode used: per-agent host broker mapping, and whether delivery is polling or webhook
 - approval policy defaults (auto-allow, require-approval, block)
 - audit event names added
 - polling/webhook verification and action-binding status

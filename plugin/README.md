@@ -10,8 +10,8 @@ This is the ClawHub-installable half of the [Contro1 OpenClaw connector](https:/
 
 This plugin only pauses sensitive tool calls. Routing an approval to a human and keeping the evidence is done by Contro1 through the bridge, so you need a free Contro1 account and the bridge running.
 
-1. **Create a free Contro1 account** at [contro1.com](https://contro1.com) and sign in. Open **Settings -> APIs & Webhooks** and copy your **API key** and **organization webhook secret**. Free up to 1,000 approval requests per month.
-2. **Deploy the [bridge](https://github.com/contro1-hq/contro1-openclaw-connector/tree/main/examples/typescript)** and give it those two values as `CONTRO1_API_KEY` and `CONTRO1_WEBHOOK_SECRET`, plus a public `PUBLIC_BASE_URL`. The [full setup guide](https://contro1.com/docs/openclaw-human-approval) walks through it step by step.
+1. **Create a free Contro1 account** at [contro1.com](https://contro1.com) and sign in. Free up to 1,000 approval requests per month.
+2. **Deploy the [bridge](https://github.com/contro1-hq/contro1-openclaw-connector/tree/main/examples/typescript)**, then run `contro1 connect openclaw`. It installs the host broker and per-agent mappings; do not add an API key to the bridge. A webhook secret and public `PUBLIC_BASE_URL` are needed only when you deliberately enable webhook delivery.
 3. **Install this plugin** (`contro1-approvals`) from [ClawHub](https://clawhub.ai/contro1/plugins/openclaw-approvals-plugin).
 4. **Turn on plugin approval forwarding** so the bridge sees the approvals:
 
