@@ -5,6 +5,7 @@ import { ApprovalBridge } from '../src/bridge.js';
 import { Contro1Client, canonicalJson, verifyCallback } from '../src/core/contro1.js';
 import { InMemoryPendingStore } from '../src/core/store.js';
 import { MockOpenClawTransport } from '../src/openclaw/mock-transport.js';
+import { reachForOpenClaw } from '../src/openclaw/types.js';
 import { DEFAULT_POLICY, classify } from '../src/policy.js';
 
 const SECRET = 'whsec_test_secret';
@@ -355,4 +356,25 @@ test('the bridge never sends the native OpenClaw agent id as the Contro1 agent',
   const source = readFileSync(new URL('../src/bridge.ts', import.meta.url), 'utf8');
   assert.ok(!/actor:\s*\{\s*agent_id:/u.test(source), 'no actor.agent_id from OpenClaw ids');
   assert.ok(!/options\.contro1\.(createRequest|getRequest|logAudit)\(/u.test(source), 'every call goes through forAgent');
+});
+
+// OpenClaw answers on WhatsApp, Telegram, Signal and Slack, any of which can be
+// a group. Nothing the bridge can observe says who is on the other end, so the
+// default must not pretend otherwise.
+test('an OpenClaw assistant is reachable by unknown people until somebody says otherwise', () => {
+  const byDefault = reachForOpenClaw({ host: 'workstation' });
+  assert.equal(byDefault.kind, 'unknown');
+  assert.equal(byDefault.participants_known, false);
+
+  // The local transport protects the credential, not the instruction surface,
+  // so it must not be what grants privacy.
+  const declared = reachForOpenClaw({ declared: 'private', host: 'workstation' });
+  assert.equal(declared.kind, 'private');
+  assert.equal(declared.participants_known, true);
+  assert.match(declared.label, /declared single-operator/);
+
+  // Anything other than the exact claim is not the claim.
+  for (const value of ['', 'true', 'yes', 'PRIVATE', undefined]) {
+    assert.equal(reachForOpenClaw({ declared: value }).kind, 'unknown', `"${value}" must not grant privacy`);
+  }
 });

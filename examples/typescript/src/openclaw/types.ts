@@ -93,3 +93,44 @@ export function approvalSummary(approval: OpenClawPendingApproval): string {
     `${approval.kind || 'exec'} approval ${approval.id}`
   );
 }
+
+/**
+ * Who is able to instruct an OpenClaw assistant.
+ *
+ * THE TRANSPORT DOES NOT ANSWER THIS, AND IT IS TEMPTING TO THINK IT DOES.
+ * The local CLI transport says the BRIDGE reaches OpenClaw over a local socket
+ * as one operating system user. That protects the credential. It says nothing
+ * about who can talk to the assistant, because OpenClaw answers on WhatsApp,
+ * Telegram, iMessage, Signal and Slack, and any of those can be a group.
+ *
+ * `sessionKey` and `host` on an approval cannot answer it either: they are
+ * best-effort projections, and this file already states that they are never the
+ * basis of a security decision.
+ *
+ * So the honest default is `unknown`, which Contro1 reads exactly the way it
+ * reads a group chat: other people can instruct this assistant, and it may not
+ * use a personal account without somebody deciding so by name.
+ *
+ * An operator who knows better can say so with CONTRO1_OPENCLAW_REACH=private,
+ * and that is a claim with a person behind it rather than an inference. It is
+ * true for a headless assistant with no chat channels wired up, and it stops
+ * being true the moment one is added, which is why nothing here tries to work
+ * it out on the assistant's behalf.
+ */
+export type DeclaredReach = 'private' | 'unknown';
+
+export function reachForOpenClaw(params: { declared?: string; host?: string }): {
+  kind: 'private' | 'shared' | 'unknown';
+  label: string;
+  participants_known: boolean;
+} {
+  const where = params.host || 'this computer';
+  if (params.declared === 'private') {
+    return { kind: 'private', label: `OpenClaw on ${where}, declared single-operator`, participants_known: true };
+  }
+  return {
+    kind: 'unknown',
+    label: `OpenClaw on ${where}`,
+    participants_known: false,
+  };
+}

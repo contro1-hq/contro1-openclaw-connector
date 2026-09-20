@@ -9,6 +9,7 @@ import {
   OpenClawTransport,
   approvalSummary,
   machineObservedFacts,
+  reachForOpenClaw,
 } from './openclaw/types.js';
 
 export const INTEGRATION = 'openclaw';
@@ -181,6 +182,7 @@ export class ApprovalBridge {
       return false;
     }
 
+    const reach = reachForOpenClaw({ declared: process.env.CONTRO1_OPENCLAW_REACH, host: approval.host });
     const externalRequestId = `openclaw:${approval.kind || 'exec'}:${approval.id}`;
     const created = await this.options.contro1.forAgent(approval.agentId).createRequest({
       title: `Approve OpenClaw ${approval.kind || 'exec'} action: ${truncate(summary, 90)}`,
@@ -204,7 +206,10 @@ export class ApprovalBridge {
       context: {
         action_type: actionType(approval),
         tool_name: approval.kind === 'plugin' ? 'openclaw.plugin' : 'openclaw.exec',
-        tool_input: machineObserved,
+        // Who could have asked for this leads the facts. The same command means
+        // something different when the only way in is a shell on one person's
+        // computer than when it arrives through a gateway anyone can call.
+        tool_input: { requested_from: reach.label, reachable_by: reachablePhrase(reach), ...machineObserved },
         resource: approval.cwd,
         environment: approval.host,
         summary,
@@ -482,3 +487,10 @@ export function classifyContro1Status(request: Record<string, unknown>): 'pendin
 }
 
 export type { RiskLevel, PolicyResult };
+
+/** The reach in the words a reviewer needs, not the words the contract uses. */
+function reachablePhrase(reach: { kind: string; participants_known: boolean }): string {
+  if (reach.kind === 'private' && reach.participants_known) return 'declared single-operator by whoever configured this bridge';
+  if (reach.kind === 'shared') return 'anyone with access to this surface';
+  return 'unknown: OpenClaw answers on chat channels this bridge cannot enumerate, so anyone on one of them may have asked';
+}
