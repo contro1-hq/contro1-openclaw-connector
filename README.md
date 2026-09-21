@@ -106,6 +106,34 @@ different guarantee from knowing who asked, and it is the one on offer.
 > Where a limit exists, it is named here. A guardrail described as stronger than
 > it is does more damage than a missing one, because somebody plans around it.
 
+## What one connection actually turns on
+
+Connecting is one thing, and it gives you two surfaces through the same
+credential: approval requests, and the Contro1 MCP server. They are not separate
+connections and there is no second key.
+
+What the MCP server offers depends on what the connection is allowed to do.
+
+| You want | You need |
+|---|---|
+| Approvals actually arrive in Contro1 | connect, **plus** the channel installed, **plus** the role granted |
+| The MCP server answers at all: identity, approval tools | connect alone |
+| The MCP server reaches Gmail, calendar, a tracker | connect, **plus** the owner allowing applications |
+
+An **approvals-only** connection carries `requests:create`, `requests:read`,
+`requests:wait`, `requests:cancel_own` and `audit:write`. The agent can identify
+itself, raise approval requests and write audit records. It has no
+`invoke_action` at all, so it cannot read a mailbox, and refusing to is the
+correct answer rather than a fault.
+
+When the owner allows applications, the same connection gains `actions:read`,
+`actions:preview`, `actions:execute`, `connections:read` and `skills:read`. Same
+key, same endpoint, larger tool set. Nothing is reconnected and nothing is
+reissued.
+
+> An agent that says it is connected and cannot read your mail is usually right
+> about both. Check `contro1 doctor` before looking for a wrong address.
+
 ## What this connector does
 
 This connector is the small server in this repository. You deploy it in your own environment as an OpenClaw **operator client**, running outside the gateway process. Instead of a human answering every `/approve` in chat, the bridge routes each pending approval to Contro1, waits for a signed decision, verifies it, and only then resolves the approval in OpenClaw. It also gives you a durable audit trail of the assistant's autonomous background work through an agent-side self-logging skill.
