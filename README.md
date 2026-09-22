@@ -112,7 +112,14 @@ Connecting is one thing, and it gives you two surfaces through the same
 credential: approval requests, and the Contro1 MCP server. They are not separate
 connections and there is no second key.
 
-What the MCP server offers depends on what the connection is allowed to do.
+The MCP server grants nothing of its own. It is the Access page seen from
+wherever the call is coming from: the same grants, the same policy, the same
+refusals. Whoever is calling, not whoever is asking - an agent sees its own
+permissions, a coding assistant sees the permissions of the person who approved
+it.
+
+What the MCP server offers therefore depends on what the connection is allowed
+to do.
 
 | You want | You need |
 |---|---|
